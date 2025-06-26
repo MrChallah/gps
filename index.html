@@ -25,7 +25,7 @@
   
   .heat-waves {
     position: absolute;
-    top: 25px;
+    top: 32px;
     left: 50%;
     transform: translateX(-50%);
     font-size: 12px;
@@ -43,7 +43,7 @@
   
   .wind-waves {
     position: absolute;
-    top: 25px;
+    top: 30px;
     left: 97%;
     transform: translateX(-50%);
     font-size: 10px;
@@ -74,14 +74,14 @@
     <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap"><i class="fa-regular fa-clock info-icon icon-text-shadow me-2"></i><span id="time">--:--:--</span></div>
     <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap">
       <i class="fa-solid fa-location-dot info-icon icon-text-shadow me-2"></i>
-      <span id="place">Waiting for GPS…</span>
+      <span id="place">Waiting…</span>
     </div>
     <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap weather-row">
       <span class="info-icon me-2">
         <span id="weather-icon" class="weather-icon">
           <i id="weather-icon-main" class="fa-solid fa-cloud weather-icon-main"></i>
           <i id="heat-waves" class="fa-solid fa-water heat-waves" style="display: none;"></i>
-          <i id="wind-waves" class="fa-solid fa-wind wind-waves" style="display: none;"></i>
+          <img id="wind-waves" class="wind-waves" style="display: none; width: 16px; height: 16px; filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);" alt="Windy" />
         </span>
       </span>
       <span id="weather">--°C</span>
@@ -93,10 +93,12 @@
   const weatherEl = document.getElementById('weather');
   const GOOGLE_GEO_KEY = 'AIzaSyBFwxZu_EqPgs7pEqk1uHn1f46F6vUoEFU';
   
-  let lastKnownGPSLocation = null;
+  let lastKnownLocation = null;
   let gpsSuccessful = false;
   let gpsAttempted = false;
   let consecutiveGPSFailures = 0;
+  let lastWeatherData = null; // Cache last successful weather
+  let lastWeatherTimestamp = 0; // Track when weather was last fetched
   
   // Detect if we're on mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -357,67 +359,130 @@
     }
   }
   
-  // Weather condition mapping for Open-Meteo weather codes
-  const weatherCodes = {
-    0: 'Clear Sky', 1: 'Mainly Clear', 2: 'Partly Cloudy', 3: 'Overcast',
-    45: 'Fog', 48: 'Depositing Rime Fog', 51: 'Light Drizzle', 53: 'Moderate Drizzle', 
-    55: 'Dense Drizzle', 56: 'Light Freezing Drizzle', 57: 'Dense Freezing Drizzle',
-    61: 'Slight Rain', 63: 'Moderate Rain', 65: 'Heavy Rain', 66: 'Light Freezing Rain', 
-    67: 'Heavy Freezing Rain', 71: 'Slight Snow', 73: 'Moderate Snow', 75: 'Heavy Snow',
-    77: 'Snow Grains', 80: 'Slight Rain Showers', 81: 'Moderate Rain Showers', 
-    82: 'Violent Rain Showers', 85: 'Slight Snow Showers', 86: 'Heavy Snow Showers',
-    95: 'Thunderstorm', 96: 'Thunderstorm with Slight Hail', 99: 'Thunderstorm with Heavy Hail'
+  // Google Weather condition mapping for Open-Meteo weather codes
+  const googleWeatherCodes = {
+    0: { condition: 'CLEAR', description: 'Clear' },
+    1: { condition: 'MOSTLY_CLEAR', description: 'Mostly Clear' },
+    2: { condition: 'PARTLY_CLOUDY', description: 'Partly Cloudy' },
+    3: { condition: 'MOSTLY_CLOUDY', description: 'Mostly Cloudy' },
+    45: { condition: 'FOG', description: 'Fog' },
+    48: { condition: 'FOG', description: 'Depositing Rime Fog' },
+    51: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Light Drizzle' },
+    53: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Moderate Drizzle' },
+    55: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Dense Drizzle' },
+    56: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Light Freezing Drizzle' },
+    57: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Dense Freezing Drizzle' },
+    61: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Light Rain' },
+    63: { condition: 'RAIN_SHOWERS', description: 'Moderate Rain' },
+    65: { condition: 'HEAVY_RAIN_SHOWERS', description: 'Heavy Rain' },
+    66: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Light Freezing Rain' },
+    67: { condition: 'HEAVY_RAIN_SHOWERS', description: 'Heavy Freezing Rain' },
+    71: { condition: 'LIGHT_SNOW', description: 'Light Snow' },
+    73: { condition: 'SNOW', description: 'Moderate Snow' },
+    75: { condition: 'HEAVY_SNOW', description: 'Heavy Snow' },
+    77: { condition: 'LIGHT_SNOW', description: 'Snow Grains' },
+    80: { condition: 'LIGHT_RAIN_SHOWERS', description: 'Light Rain Showers' },
+    81: { condition: 'RAIN_SHOWERS', description: 'Moderate Rain Showers' },
+    82: { condition: 'HEAVY_RAIN_SHOWERS', description: 'Heavy Rain Showers' },
+    85: { condition: 'LIGHT_SNOW_SHOWERS', description: 'Light Snow Showers' },
+    86: { condition: 'HEAVY_SNOW_SHOWERS', description: 'Heavy Snow Showers' },
+    95: { condition: 'THUNDERSTORM', description: 'Thunderstorm' },
+    96: { condition: 'THUNDERSTORM', description: 'Thunderstorm with Light Hail' },
+    99: { condition: 'THUNDERSTORM', description: 'Thunderstorm with Heavy Hail' }
   };
   
-  // Function to get weather icon based on weather code and time
-  function getWeatherIcon(weatherCode, isDay = true, temperature = 20) {
-    const iconMap = {
-      // Clear/Sunny - use sun for day, moon for night
-      0: isDay ? (temperature > 17 ? 'fa-sun' : 'fa-sun') : 'fa-moon',           // Clear Sky
-      1: isDay ? 'fa-sun' : 'fa-moon',           // Mainly Clear
-      
-      // Cloudy
-      2: isDay ? 'fa-cloud-sun' : 'fa-cloud-moon',     // Partly Cloudy
-      3: 'fa-cloud',         // Overcast
-      
-      // Fog
-      45: 'fa-eye-slash',    // Fog
-      48: 'fa-eye-slash',    // Depositing Rime Fog
-      
-      // Drizzle
-      51: 'fa-cloud-rain',   // Light Drizzle
-      53: 'fa-cloud-rain',   // Moderate Drizzle
-      55: 'fa-cloud-rain',   // Dense Drizzle
-      56: 'fa-cloud-rain',   // Light Freezing Drizzle
-      57: 'fa-cloud-rain',   // Dense Freezing Drizzle
-      
-      // Rain
-      61: 'fa-cloud-rain',   // Slight Rain
-      63: 'fa-cloud-rain',   // Moderate Rain
-      65: 'fa-cloud-showers-heavy',   // Heavy Rain
-      66: 'fa-cloud-rain',   // Light Freezing Rain
-      67: 'fa-cloud-showers-heavy',   // Heavy Freezing Rain
-      
-      // Snow
-      71: 'fa-snowflake',    // Slight Snow
-      73: 'fa-snowflake',    // Moderate Snow
-      75: 'fa-snowflake',    // Heavy Snow
-      77: 'fa-snowflake',    // Snow Grains
-      
-      // Showers
-      80: 'fa-cloud-rain',   // Slight Rain Showers
-      81: 'fa-cloud-rain',   // Moderate Rain Showers
-      82: 'fa-cloud-showers-heavy',   // Violent Rain Showers
-      85: 'fa-snowflake',    // Slight Snow Showers
-      86: 'fa-snowflake',    // Heavy Snow Showers
-      
-      // Thunderstorm
-      95: 'fa-cloud-bolt',         // Thunderstorm
-      96: 'fa-cloud-bolt',         // Thunderstorm with Slight Hail
-      99: 'fa-cloud-bolt'          // Thunderstorm with Heavy Hail
+  // Function to get Google weather icon URL based on weather code and time
+  function getGoogleWeatherIcon(weatherCode, isDay = true, condition = null) {
+    // Use passed condition or derive from weather code
+    const finalCondition = condition || googleWeatherCodes[weatherCode]?.condition || 'CLOUDY';
+    
+    // Repository base URL for v4 icons (now primary for everyone)
+    const repoBaseUrl = 'https://mrchallah.github.io/v4/';
+    const fallbackUrl = 'https://maps.gstatic.com/weather/v1/';
+    
+    // Standard Google Maps weather icon mapping for fallback
+    const standardIconMap = {
+      'CLEAR': isDay ? 'sunny.svg' : 'clear.svg',
+      'MOSTLY_CLEAR': isDay ? 'mostly_sunny.svg' : 'mostly_clear.svg',
+      'PARTLY_CLOUDY': isDay ? 'party_cloudy.svg' : 'partly_clear.svg',
+      'MOSTLY_CLOUDY': isDay ? 'cloudy.svg' : 'cloudy.svg',
+      'CLOUDY': 'cloudy.svg',
+      'FOG': 'fog.svg',
+      'LIGHT_RAIN_SHOWERS': 'drizzle.svg',
+      'RAIN_SHOWERS': 'showers.svg',
+      'HEAVY_RAIN_SHOWERS': 'heavy.svg',
+      'LIGHT_RAIN': 'drizzle.svg',
+      'RAIN': 'rain.svg',
+      'HEAVY_RAIN': 'heavy.svg',
+      'LIGHT_SNOW_SHOWERS': 'flurries.svg',
+      'SNOW_SHOWERS': 'snow_showers.svg',
+      'HEAVY_SNOW_SHOWERS': 'heavy_snow.svg',
+      'LIGHT_SNOW': 'flurries.svg',
+      'SNOW': 'snow_showers.svg',
+      'HEAVY_SNOW': 'heavy_snow.svg',
+      'SNOWSTORM': 'snow_showers.svg',
+      'SNOW_PERIODICALLY_HEAVY': 'heavy_snow.svg',
+      'HEAVY_SNOW_STORM': 'heavy_snow.svg',
+      'BLOWING_SNOW': 'blowing_snow.svg',
+      'RAIN_AND_SNOW': 'wintry_mix.svg',
+      'HAIL': 'sleet_hail.svg',
+      'HAIL_SHOWERS': 'wintry_mix.svg',
+      'THUNDERSTORM': 'strong_tstorms.svg',
+      'THUNDERSHOWER': 'strong_tstorms.svg',
+      'LIGHT_THUNDERSTORM_RAIN': 'strong_tstorms.svg',
+      'SCATTERED_THUNDERSTORMS': 'isolated_tstorms.svg',
+      'HEAVY_THUNDERSTORM': 'strong_tstorms.svg'
     };
     
-    return iconMap[weatherCode] || 'fa-cloud';
+    // v4 repository weather icon mapping (now primary for everyone)
+    const v4IconMap = {
+      'CLEAR': isDay ? 'sunny_day.svg' : 'clear_night.svg',
+      'MOSTLY_CLEAR': isDay ? 'mostly_clear_day.svg' : 'mostly_clear_night.svg',
+      'PARTLY_CLOUDY': isDay ? 'partly_cloudy_day.svg' : 'partly_cloudy_night.svg',
+      'MOSTLY_CLOUDY': isDay ? 'mostly_cloudy_day.svg' : 'mostly_cloudy_night.svg',
+      'CLOUDY': 'cloudy.svg',
+      'FOG': 'haze_fog_dust_smoke.svg',
+      'LIGHT_RAIN_SHOWERS': 'drizzle.svg',
+      'RAIN_SHOWERS': isDay ? 'scattered_showers_day.svg' : 'scattered_showers_night.svg',
+      'HEAVY_RAIN_SHOWERS': 'showers_rain.svg',
+      'LIGHT_RAIN': isDay ? 'rain_with_cloudy_light.svg' : 'rain_with_cloudy_dark.svg',
+      'RAIN': isDay ? 'rain_with_cloudy_light.svg' : 'rain_with_cloudy_dark.svg',
+      'HEAVY_RAIN': 'heavy_rain.svg',
+      'LIGHT_SNOW_SHOWERS': isDay ? 'scattered_snow_showers_day.svg' : 'scattered_snow_showers_night.svg',
+      'SNOW_SHOWERS': 'showers_snow.svg',
+      'HEAVY_SNOW_SHOWERS': 'showers_snow.svg',
+      'LIGHT_SNOW': isDay ? 'snow_with_cloudy_light.svg' : 'snow_with_cloudy_dark.svg',
+      'SNOW': isDay ? 'snow_with_cloudy_light.svg' : 'snow_with_cloudy_dark.svg',
+      'HEAVY_SNOW': 'heavy_snow.svg',
+      'SNOWSTORM': 'heavy_snow.svg',
+      'SNOW_PERIODICALLY_HEAVY': 'heavy_snow.svg',
+      'HEAVY_SNOW_STORM': 'heavy_snow.svg',
+      'BLOWING_SNOW': 'blowing_snow.svg',
+      'RAIN_AND_SNOW': 'mixed_rain_snow.svg',
+      'HAIL': 'sleet_hail.svg',
+      'HAIL_SHOWERS': 'mixed_rain_hail_sleet.svg',
+      'THUNDERSTORM': isDay ? 'isolated_scattered_thunderstorms_day.svg' : 'isolated_scattered_thunderstorms_night.svg',
+      'THUNDERSHOWER': isDay ? 'isolated_scattered_thunderstorms_day.svg' : 'isolated_scattered_thunderstorms_night.svg',
+      'LIGHT_THUNDERSTORM_RAIN': isDay ? 'isolated_scattered_thunderstorms_day.svg' : 'isolated_scattered_thunderstorms_night.svg',
+      'SCATTERED_THUNDERSTORMS': isDay ? 'isolated_scattered_thunderstorms_day.svg' : 'isolated_scattered_thunderstorms_night.svg',
+      'HEAVY_THUNDERSTORM': 'isolated_thunderstorms.svg',
+      'ICY': 'icy.svg',
+      'BLIZZARD': 'blizzard.svg',
+      'TORNADO': 'tornado.svg',
+      'TROPICAL_STORM': 'tropical_storm_hurricane.svg',
+      'VERY_HOT': 'very_hot.svg',
+      'VERY_COLD': 'very_cold.svg'
+    };
+    
+    // Use v4 repository icons as primary for everyone, with Google Maps as fallback
+    const v4Icon = v4IconMap[finalCondition] || 'cloudy.svg';
+    const fallbackIcon = standardIconMap[finalCondition] || 'cloudy.svg';
+    
+    console.log('🎌 Using v4 repository weather icon (primary):', v4Icon, 'for condition:', finalCondition);
+    return {
+      primary: repoBaseUrl + v4Icon,
+      fallback: fallbackUrl + fallbackIcon
+    };
   }
   
   // Enhanced heat wave detection based on regional climate context
@@ -458,19 +523,104 @@
       const f = Math.round(c * 9 / 5 + 32);
       const isDay = j.current.is_day === 1;
       
-      // Enhanced weather condition detection
+      // Enhanced weather condition detection using multiple parameters
+      let weatherInfo = googleWeatherCodes[j.current.weather_code] || { condition: 'CLOUDY', description: 'Cloudy' };
+      let condition = weatherInfo.condition;
+      let desc = weatherInfo.description;
+      
+      // Enhanced condition logic using additional parameters
       const windSpeed = j.current.wind_speed_10m || 0;
       const precipitation = j.current.precipitation || 0;
       const visibility = j.current.visibility || 10000;
       
-      // Wind conditions
-      let isWindy = windSpeed > 18;
-      let isVeryWindy = windSpeed > 35;
+      // Wind conditions - now as secondary effects only
+      let isWindy = windSpeed > 18; // Lowered from 20 to 10 km/h
+      let isVeryWindy = windSpeed > 35; // Lowered from 40 to 25 km/h
       
-      let desc = weatherCodes[j.current.weather_code] || 'Unknown';
       
-      // Change "Clear Sky" to "Sunny" if temperature is above 17°C and it's daytime
-      if (j.current.weather_code === 0 && c > 17 && isDay) {
+      // Add debug logging for wind detection
+      console.log('Wind speed:', windSpeed, 'km/h, isWindy:', isWindy, 'isVeryWindy:', isVeryWindy);
+      
+      // Don't override main weather condition for wind - keep original condition
+      // Wind will be shown as secondary effect below
+      
+      // Visibility-based conditions
+      if (visibility < 1000) {
+        if (j.current.weather_code === 45 || j.current.weather_code === 48) {
+          // Keep existing fog mapping
+        } else if (c < 0 && (j.current.weather_code >= 71 && j.current.weather_code <= 77)) {
+          condition = 'BLOWING_SNOW';
+          desc = 'Blowing Snow';
+        }
+      }
+      
+      // Enhanced snow conditions based on intensity and temperature
+      if (j.current.weather_code >= 71 && j.current.weather_code <= 77) {
+        if (c < -10 && windSpeed > 30) {
+          condition = 'BLIZZARD';
+          desc = 'Blizzard';
+        } else if (j.current.weather_code === 75 && windSpeed > 20) {
+          condition = 'SNOWSTORM';
+          desc = 'Snowstorm';
+        } else if (c < -15) {
+          condition = 'HEAVY_SNOW_STORM';
+          desc = 'Heavy Snow Storm';
+        }
+      }
+      
+      // Enhanced rain conditions
+      if (j.current.weather_code >= 61 && j.current.weather_code <= 67) {
+        if (j.current.weather_code <= 63) {
+          condition = 'LIGHT_RAIN';
+          desc = 'Light Rain';
+        } else if (j.current.weather_code >= 65) {
+          condition = 'HEAVY_RAIN';
+          desc = 'Heavy Rain';
+        } else {
+          condition = 'RAIN';
+          desc = 'Rain';
+        }
+      }
+      
+      // Mixed precipitation detection
+      if (precipitation > 0 && c >= -2 && c <= 2) {
+        if (j.current.weather_code >= 61 && j.current.weather_code <= 67) {
+          condition = 'RAIN_AND_SNOW';
+          desc = 'Rain and Snow';
+        }
+      }
+      
+      // Thunderstorm enhancements
+      if (j.current.weather_code >= 95 && j.current.weather_code <= 99) {
+        if (windSpeed > 40) {
+          condition = 'HEAVY_THUNDERSTORM';
+          desc = 'Severe Thunderstorm';
+        } else if (windSpeed > 25) {
+          condition = 'SCATTERED_THUNDERSTORMS';
+          desc = 'Scattered Thunderstorms';
+        } else if (precipitation > 0) {
+          condition = 'THUNDERSHOWER';
+          desc = 'Thundershower';
+        }
+        
+        // Hail detection for thunderstorms
+        if (j.current.weather_code >= 96) {
+          condition = 'HAIL';
+          desc = j.current.weather_code === 96 ? 'Light Hail' : 'Heavy Hail';
+        }
+      }
+      
+      // Temperature-based extreme conditions
+      if (c > 35) {
+        condition = 'VERY_HOT';
+        desc = 'Very Hot';
+      } else if (c < -20) {
+        condition = 'VERY_COLD';
+        desc = 'Very Cold';
+      }
+      
+      // Change "Clear" to "Sunny" if temperature is above 17°C and condition is clear AND it's daytime
+      if (j.current.weather_code === 0 && c > 17 && condition === 'CLEAR' && isDay) {
         desc = 'Sunny';
       }
       
@@ -479,7 +629,7 @@
       console.log(`Heat wave threshold for region (${heatThreshold.region}): ${heatThreshold.threshold}°C`);
       
       // Check for heat wave conditions
-      const isHot = c >= heatThreshold.threshold;
+      const isHot = c >= heatThreshold.threshold; // Temperature-based only, regionally appropriate
       
       // Add wind description to weather text if windy
       if (isVeryWindy) {
@@ -493,19 +643,63 @@
         desc += ', Heat Wave';
       }
       
+      // Cache successful weather data
+      lastWeatherData = {
+        temperature: c,
+        fahrenheit: f,
+        description: desc,
+        weatherCode: j.current.weather_code,
+        isDay: isDay,
+        isHot: isHot,
+        isWindy: isWindy,
+        condition: condition,
+        lat: lat,
+        lon: lon
+      };
+      lastWeatherTimestamp = Date.now();
+      
+      // Set final weather text
       weatherEl.textContent = `${c}°C | ${f}°F, ${desc}`;
       
-      // Update weather icon
-      const weatherIconMain = document.getElementById('weather-icon-main');
+      // Update weather icon with enhanced condition
+      const weatherIcon = document.getElementById('weather-icon');
+      const iconUrls = getGoogleWeatherIcon(j.current.weather_code, isDay, condition);
+      
+      // Create new image element and preload it
+      const imgElement = document.createElement('img');
+      imgElement.alt = desc;
+      imgElement.style.cssText = 'width: 24px; height: 24px; filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);';
+      
+      // Add error handler for fallback to standard Google icons
+      imgElement.onerror = function() {
+        console.log('Primary weather icon failed, using fallback:', iconUrls.fallback);
+        this.src = iconUrls.fallback;
+      };
+      
+      // Only replace the icon after the new one has loaded to prevent blinking
+      imgElement.onload = function() {
+        // Preserve secondary effects (heat-waves and wind-waves)
+        const heatWaves = weatherIcon.querySelector('#heat-waves');
+        const windWaves = weatherIcon.querySelector('#wind-waves');
+        
+        // Clear and add new main icon
+        weatherIcon.innerHTML = '';
+        weatherIcon.appendChild(imgElement);
+        
+        // Re-add preserved secondary effects
+        if (heatWaves) {
+          weatherIcon.appendChild(heatWaves);
+        }
+        if (windWaves) {
+          weatherIcon.appendChild(windWaves);
+        }
+      };
+      
+      // Start loading the image (this triggers the onload event when ready)
+      imgElement.src = iconUrls.primary;
+      
+      // Show heat waves based on regional threshold (no wind requirement)
       const heatWaves = document.getElementById('heat-waves');
-      const windWaves = document.getElementById('wind-waves');
-      const iconClass = getWeatherIcon(j.current.weather_code, isDay, c);
-      
-      // Remove all existing weather icon classes
-      weatherIconMain.className = 'weather-icon-main';
-      weatherIconMain.classList.add('fa-solid', iconClass);
-      
-      // Show heat waves based on regional threshold
       if (heatWaves) {
         if (isHot) {
           heatWaves.style.display = 'inline-block';
@@ -522,33 +716,142 @@
       }
       
       // Show wind waves if windy conditions
+      const windWaves = document.getElementById('wind-waves');
+      console.log('Wind waves element found:', !!windWaves, 'isWindy:', isWindy);
+      
       if (windWaves) {
         if (isWindy) {
+          console.log('Attempting to show wind waves...');
+          
+          // Load windy.svg icon
+          const repoBaseUrl = 'https://mrchallah.github.io/v4/';
+          const fallbackUrl = 'https://maps.gstatic.com/weather/v1/';
+          
+          // Clear any existing error handlers
+          windWaves.onerror = null;
+          windWaves.onload = null;
+          
+          // Set up error handler first
+          windWaves.onerror = function() {
+            console.log('Primary wind icon failed, trying fallback...');
+            this.onerror = function() {
+              console.log('Fallback wind icon also failed, using text fallback');
+              // If both icons fail, create a text-based wind indicator
+              this.style.display = 'none';
+              
+              // Create a text-based wind indicator as last resort
+              let textWind = document.getElementById('text-wind-indicator');
+              if (!textWind) {
+                textWind = document.createElement('span');
+                textWind.id = 'text-wind-indicator';
+                textWind.innerHTML = '💨';
+                textWind.style.cssText = 'position: absolute; top: 30px; left: 97%; transform: translateX(-50%); font-size: 12px; animation: windWave 1.5s ease-in-out infinite;';
+                weatherIcon.appendChild(textWind);
+              }
+              textWind.style.display = 'inline-block';
+            };
+            this.src = fallbackUrl + 'windy_breezy.svg';
+          };
+          
+          // Set up success handler
+          windWaves.onload = function() {
+            console.log('Wind icon loaded successfully');
+          };
+          
+          // Set the primary source
+          windWaves.src = repoBaseUrl + 'windy.svg';
           windWaves.style.display = 'inline-block';
+          
+          console.log('Wind waves display set to inline-block, src:', windWaves.src);
           
           // Position wind waves - if no heat, center it; if heat, keep it to the right
           if (isHot) {
             windWaves.classList.remove('only-wind');
+            console.log('Wind waves positioned with heat waves');
             // Update heat waves to show they're with wind
             if (heatWaves) {
               heatWaves.classList.add('with-wind');
             }
           } else {
             windWaves.classList.add('only-wind');
+            console.log('Wind waves positioned alone (only-wind)');
           }
         } else {
+          console.log('Not windy enough, hiding wind waves');
           windWaves.style.display = 'none';
           windWaves.classList.remove('only-wind');
+          
+          // Also hide text wind indicator if it exists
+          const textWind = document.getElementById('text-wind-indicator');
+          if (textWind) {
+            textWind.style.display = 'none';
+          }
           
           // Remove wind class from heat waves
           if (heatWaves) {
             heatWaves.classList.remove('with-wind');
           }
         }
+      } else {
+        console.error('Wind waves element not found!');
       }
     } catch (error) {
       console.error('Weather fetch failed:', error);
-      weatherEl.textContent = "Weather N/A";
+      
+      // Use cached weather data if it's recent (within 10 minutes) instead of showing "Weather N/A"
+      if (lastWeatherData && (Date.now() - lastWeatherTimestamp) < 600000) {
+        console.log('Using cached weather data due to fetch failure');
+        const cached = lastWeatherData;
+        weatherEl.textContent = `${cached.temperature}°C | ${cached.fahrenheit}°F, ${cached.description} (cached)`;
+        
+        // Update weather icon with cached condition
+        const weatherIcon = document.getElementById('weather-icon');
+        const iconUrls = getGoogleWeatherIcon(cached.weatherCode, cached.isDay, cached.condition);
+        
+        // Create new image element for cached data
+        const imgElement = document.createElement('img');
+        imgElement.alt = cached.description;
+        imgElement.style.cssText = 'width: 24px; height: 24px; filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);';
+        imgElement.src = iconUrls.primary;
+        imgElement.onerror = function() { this.src = iconUrls.fallback; };
+        
+        // Update icon
+        weatherIcon.innerHTML = '';
+        weatherIcon.appendChild(imgElement);
+        
+        // Update secondary effects with cached data
+        const heatWaves = document.getElementById('heat-waves');
+        const windWaves = document.getElementById('wind-waves');
+        
+        if (heatWaves) {
+          heatWaves.style.display = cached.isHot ? 'inline-block' : 'none';
+          if (cached.isHot && cached.isWindy) {
+            heatWaves.classList.add('with-wind');
+          } else {
+            heatWaves.classList.remove('with-wind');
+          }
+        }
+        
+        if (windWaves) {
+          windWaves.style.display = cached.isWindy ? 'inline-block' : 'none';
+          if (cached.isWindy) {
+            if (cached.isHot) {
+              windWaves.classList.remove('only-wind');
+            } else {
+              windWaves.classList.add('only-wind');
+            }
+          } else {
+            windWaves.classList.remove('only-wind');
+          }
+        }
+        
+        // Re-add secondary effects to icon
+        if (heatWaves) weatherIcon.appendChild(heatWaves);
+        if (windWaves) weatherIcon.appendChild(windWaves);
+      } else {
+        // Only show "Weather N/A" if no recent cached data is available
+        weatherEl.textContent = "Weather N/A";
+      }
     }
   }
   
@@ -602,6 +905,148 @@
     });
   }
   
+  // Method 3: Fallback to IP location with multiple services
+  async function getLocationFromGoogle(){
+    try {
+      const res = await fetch("https://www.googleapis.com/geolocation/v1/geolocate?key=" + GOOGLE_GEO_KEY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ considerIp: true })
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Google Geolocation API failed: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      
+      if (data.error) {
+        throw new Error(`Google Geolocation API error: ${data.error.message}`);
+      }
+      
+      return {
+        lat: data.location.lat,
+        lon: data.location.lng,
+        source: "IP Location (Google)"
+      };
+    } catch (error) {
+      // Don't log CORS errors as they're expected when opening HTML files locally
+      if (!error.message.includes('CORS') && !error.message.includes('403')) {
+        console.warn('Google IP location failed:', error.message);
+      }
+      throw error;
+    }
+  }
+
+  // Alternative IP location services
+  async function getIPLocationFromIpApi() {
+    try {
+      const res = await fetch('https://ip-api.com/json/?fields=status,lat,lon');
+      
+      if (!res.ok) {
+        throw new Error(`IP-API failed: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      
+      if (data.status !== 'success') {
+        throw new Error('IP-API request failed');
+      }
+      
+      return {
+        lat: data.lat,
+        lon: data.lon,
+        source: "IP Location (IP-API)"
+      };
+    } catch (error) {
+      // Don't log CORS errors as they're expected when opening HTML files locally
+      if (!error.message.includes('CORS') && !error.message.includes('403')) {
+        console.warn('IP-API location failed:', error.message);
+      }
+      throw error;
+    }
+  }
+
+  async function getIPLocationFromIpInfo() {
+    try {
+      const res = await fetch('https://ipinfo.io/json');
+      
+      if (!res.ok) {
+        throw new Error(`IPInfo failed: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      
+      if (!data.loc) {
+        throw new Error('IPInfo request failed - no location data');
+      }
+      
+      const [lat, lon] = data.loc.split(',').map(Number);
+      return {
+        lat: lat,
+        lon: lon,
+        source: "IP Location (IPInfo)"
+      };
+    } catch (error) {
+      // Don't log CORS errors as they're expected when opening HTML files locally
+      if (!error.message.includes('CORS') && !error.message.includes('403')) {
+        console.warn('IPInfo location failed:', error.message);
+      }
+      throw error;
+    }
+  }
+
+  async function getIPLocationFromIpApi2() {
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      
+      if (!res.ok) {
+        throw new Error(`IPAPI.co failed: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      
+      if (data.error) {
+        throw new Error(`IPAPI.co error: ${data.reason}`);
+      }
+      
+      return {
+        lat: data.latitude,
+        lon: data.longitude,
+        source: "IP Location (IPAPI.co)"
+      };
+    } catch (error) {
+      // Don't log CORS errors as they're expected when opening HTML files locally
+      if (!error.message.includes('CORS') && !error.message.includes('403')) {
+        console.warn('IPAPI.co location failed:', error.message);
+      }
+      throw error;
+    }
+  }
+
+  // Try multiple IP location services in order
+  async function getIPLocation() {
+    const services = [
+      getLocationFromGoogle,
+      getIPLocationFromIpApi,
+      getIPLocationFromIpInfo,
+      getIPLocationFromIpApi2
+    ];
+
+    for (const service of services) {
+      try {
+        const result = await service();
+        console.log('IP location success:', result.source);
+        return result;
+      } catch (error) {
+        console.warn('IP location service failed, trying next...', error);
+        continue;
+      }
+    }
+    
+    throw new Error('All IP location services failed');
+  }
+  
   async function updateLocationAndWeather(showLoadingMessages = true){
     try {
       let locationData = null;
@@ -620,26 +1065,34 @@
         }
       }
       
-      // Use last known GPS location as fallback (expanded conditions)
-      if (!locationData && lastKnownGPSLocation) {
+      // Try Method 3: IP location fallback
+      if (!locationData) {
+        if (showLoadingMessages) {
+          placeEl.textContent = "Using IP location...";
+        }
+        try {
+          locationData = await getIPLocation();
+        } catch (ipError) {
+          console.error('All IP location services failed:', ipError);
+        }
+      }
+      
+      // Use last known location as final fallback (expanded conditions)
+      if (!locationData && lastKnownLocation) {
         const now = Date.now();
-        const locationAge = now - (lastKnownGPSLocation.timestamp || 0);
+        const locationAge = now - (lastKnownLocation.timestamp || 0);
         
-        // Use cached GPS location if it's recent (within 10 minutes)
-        if (locationAge < 600000) { // 10 minutes
-          locationData = lastKnownGPSLocation;
-          console.log('Using cached GPS location (age:', Math.round(locationAge/60000), 'minutes)');
+        // Use cached location if it's recent (within 10 minutes) or if all methods failed
+        if (locationAge < 600000) { // 10 minutes instead of 5
+          locationData = lastKnownLocation;
+          console.log('Using cached location (age:', Math.round(locationAge/60000), 'minutes)');
         }
       }
       
       // Update the display
       if (locationData) {
-        // Only save GPS locations to cache (not IRL Pro data)
-        if (locationData.source.includes('GPS')) {
-          lastKnownGPSLocation = locationData;
-          lastKnownGPSLocation.timestamp = Date.now();
-        }
-        
+        lastKnownLocation = locationData;
+        lastKnownLocation.timestamp = Date.now();
         if (showLoadingMessages) {
           placeEl.textContent = "Loading location...";
         }
@@ -648,21 +1101,31 @@
         fetchWeather(locationData.lat, locationData.lon);
         console.log('Location updated:', locationData.source, label);
       } else {
-        // Only show "GPS N/A" if we truly have no GPS data
-        console.error('No GPS data available from any source');
+        // During silent refreshes, don't immediately show "Location N/A" - keep existing display
         if (showLoadingMessages) {
-          placeEl.textContent = "GPS N/A";
-          weatherEl.textContent = "Weather N/A";
+          // Only show "Location N/A" during initial load or user-initiated refresh
+          console.error('No location data available from any source');
+          placeEl.textContent = "Location N/A";
+          
+          // Don't immediately clear weather - let the weather fetch handle caching
+          if (!lastWeatherData || (Date.now() - lastWeatherTimestamp) > 600000) {
+            weatherEl.textContent = "Weather N/A";
+          }
+        } else {
+          // During silent refresh failures, just log the issue but keep existing display
+          console.log('Silent location refresh failed, keeping existing display');
         }
-        // Don't update display during silent refreshes to avoid flashing "N/A"
       }
       
     } catch (e) {
       console.error('Location update failed:', e);
       // Only show error during initial load or user-initiated refresh
       if (showLoadingMessages) {
-        placeEl.textContent = "GPS N/A";
-        weatherEl.textContent = "Weather N/A";
+        placeEl.textContent = "Location N/A";
+        // Don't immediately clear weather - let cached data persist
+        if (!lastWeatherData || (Date.now() - lastWeatherTimestamp) > 600000) {
+          weatherEl.textContent = "Weather N/A";
+        }
       }
     }
   }
