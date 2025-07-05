@@ -989,39 +989,53 @@
         imgElement.src = iconUrls.primary;
         imgElement.onerror = function() { this.src = iconUrls.fallback; };
         
-        // Update icon
-        weatherIcon.innerHTML = '';
-        weatherIcon.appendChild(imgElement);
-        
-        // Update secondary effects with cached data
-        const heatWaves = document.getElementById('heat-waves');
-        const windWaves = document.getElementById('wind-waves');
-        
-        if (heatWaves) {
-          heatWaves.style.display = cached.isHot ? 'inline-block' : 'none';
-          if (cached.isHot && cached.isWindy) {
-            heatWaves.classList.add('with-wind');
-          } else {
-            heatWaves.classList.remove('with-wind');
+        // Use proper element restoration for cached data
+        imgElement.onload = function() {
+          // Preserve secondary effects before clearing
+          const heatWaves = weatherIcon.querySelector('#heat-waves');
+          const windWaves = weatherIcon.querySelector('#wind-waves');
+          
+          // Update icon
+          weatherIcon.innerHTML = '';
+          weatherIcon.appendChild(imgElement);
+          
+          // Re-add preserved secondary effects
+          if (heatWaves) {
+            weatherIcon.appendChild(heatWaves);
           }
-        }
-        
-        if (windWaves) {
-          windWaves.style.display = cached.isWindy ? 'inline-block' : 'none';
-          if (cached.isWindy) {
-            if (cached.isHot) {
-              windWaves.classList.remove('only-wind');
+          if (windWaves) {
+            weatherIcon.appendChild(windWaves);
+          }
+          
+          // Update secondary effects with cached data after elements are restored
+          const restoredHeatWaves = document.getElementById('heat-waves');
+          const restoredWindWaves = document.getElementById('wind-waves');
+          
+          if (restoredHeatWaves) {
+            restoredHeatWaves.style.display = cached.isHot ? 'inline-block' : 'none';
+            if (cached.isHot && cached.isWindy) {
+              restoredHeatWaves.classList.add('with-wind');
             } else {
-              windWaves.classList.add('only-wind');
+              restoredHeatWaves.classList.remove('with-wind');
             }
-          } else {
-            windWaves.classList.remove('only-wind');
           }
-        }
+          
+          if (restoredWindWaves) {
+            restoredWindWaves.style.display = cached.isWindy ? 'inline-block' : 'none';
+            if (cached.isWindy) {
+              if (cached.isHot) {
+                restoredWindWaves.classList.remove('only-wind');
+              } else {
+                restoredWindWaves.classList.add('only-wind');
+              }
+            } else {
+              restoredWindWaves.classList.remove('only-wind');
+            }
+          }
+        };
         
-        // Re-add secondary effects to icon
-        if (heatWaves) weatherIcon.appendChild(heatWaves);
-        if (windWaves) weatherIcon.appendChild(windWaves);
+        // Start loading the cached weather icon
+        imgElement.src = iconUrls.primary;
       } else {
         // Only show "Weather N/A" if no cached data is available at all
         weatherEl.textContent = "Weather N/A";
